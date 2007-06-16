@@ -1,0 +1,22 @@
+x standard type conversions
+    int -> Int
+    java.lang.String -> Str
+    etc.
+
+x multis
+
+x parameter types for method declarations
+
+document all modules with POD
+
+allow command line supply of type casts?
+
+actually pass command line flags to emit
+
+handle class generation (is it the same as interfaces?)
+
+---
+
+handle thrown errors
+
+handle class constants (requires loading the java class or interface)
