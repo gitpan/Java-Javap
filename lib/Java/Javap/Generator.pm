@@ -41,7 +41,7 @@ To use a particular generator, see its POD.
 
 =head1 KNOWN GENERATORS
 
-    Java::Javap::Generator::TT - uses TT templates
+    Java::Javap::Generator::Std - uses TT templates
 
 =head1 METHODS
 
@@ -54,9 +54,50 @@ Call C<get_generator> with the name of the generator you want to use.
 Pass any additional arguments expected by the C<new> method of your
 genertor's class.  Example:
 
-    my $generator = Java::Javap::Generator->get_generator(
-            'TT', \%tt_args
-    );
+    my $generator = Java::Javap::Generator->get_generator( 'Std' );
+
+=head1 GENERATOR API
+
+Each generator must live in the Java::Javap::Generator:: namespace and
+must implement two methods:
+
+=head2 new
+
+A constructor called by C<get_generator> in this module.  Your constructor
+will receive all of the parameters passed to C<get_generator>, except
+the name of the subclass (but C<new> is invoked through the fully
+qualified subclass name, so you get that too).
+
+C<java2perl6> allows callers to supply these parameters as a string on the
+command line with the C<-p> (or C<--genopts>) flag, whose value is split
+on whitespace before the call.
+
+=head2 generate
+
+This method returns a single string containing the full text of a Perl
+module corresponding to the abstract syntax tree of a Java module.
+Someone else will decide what to do with the output, all you need to do
+is make the string.
+
+Parameters are supplied to your C<generate> in a single hash reference.
+These are the ones supplied by the C<java2perl6> command line tool:
+
+=over 4
+
+=item class_file
+
+The name of the Java .class file which was run through javap.
+
+=item ast
+
+The abstract syntax tree made from the class file by C<Java::Javap::Grammar>.
+
+=item javap_flags
+
+The command line flags passed to javap (like -classpath ...).  These
+are included so you can dump them into a comment in the generated output.
+
+=back
 
 =head2 EXPORT
 

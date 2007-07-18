@@ -7,7 +7,7 @@ use Java::Javap::TypeCast;
 
 sub new {
     my $class   = shift;
-    my $tt_args = shift || { INCLUDE_PATH => 'templates:.', POST_CHOMP => 1 };
+    my $tt_args = { POST_CHOMP => 1 };
 
     my $self    = bless { }, $class;
     $self->tt_args_set( $tt_args );
@@ -28,10 +28,14 @@ sub tt_args {
 }
 
 sub generate {
-    my $self       = shift;
-    my $class_file = shift;
-    my $ast        = shift;
-    my $template   = $self->_get_template( $ast );
+    my $self        = shift;
+    my $params      = shift;
+
+    my $class_file  = $params->{ class_file  };
+    my $ast         = $params->{ ast         };
+    my $javap_flags = $params->{ javap_flags };
+
+    my $template    = $self->_get_template( $ast );
 
     my $tt         = Template->new( $self->tt_args );
 
@@ -41,9 +45,7 @@ sub generate {
         version    => $Java::Javap::VERSION,
         class_file => $class_file,
         type_caster=> Java::Javap::TypeCast->new(),
-        command_line_flags => [
-            '--classpath testjavas',
-        ],
+        javap_flags=> $javap_flags,
     };
 
     my $retval;
@@ -63,14 +65,12 @@ sub _get_template {
 
 sub _get_template_for_interface {
     return << 'EO_Template';
-# This file was automatically generated [% gen_time %]
+# This file was automatically generated [% gen_time +%]
 # by java2perl6 [% version %] from decompiling
 # [% class_file %] using command line flags:
-[% FOREACH flag IN command_line_flags %]
-#   [% flag %]
-[% END +%]
+#   [% javap_flags +%]
 
-role [% ast.qualified_name %] {
+role [% ast.perl_qualified_name %] {
 [% FOREACH element IN ast.contents %]
 [% IF element.body_element == 'method' %]
 [% IF ast.methods.${ element.name } > 1 %]
@@ -90,7 +90,31 @@ EO_Template
 }
 
 sub _get_template_for_class {
-    die __PACKAGE__ . " doesn't handle classes yet\n";
+    return << 'EO_Class_Template';
+# This file was automatically generated [% gen_time +%]
+# by java2perl6 [% version %] from decompliling
+# [% class_file %] using command line flags:
+#   [% javap_flags +%]
+
+class [% ast.perl_qualified_name %] {
+[% FOREACH element IN ast.contents %]
+[%  IF element.body_element == 'method' %]
+[%      IF ast.methods.${ element.name } > 1 %]
+    multi method [% element.name %](
+[%      ELSE %]
+    method [% element.name %](
+[%      END %][% arg_counter = 0 %]
+[%      FOREACH arg IN element.args %][% arg_counter = arg_counter + 1 %]
+        [% arg.array_text %][% type_caster.cast( arg.name ) %] v[% arg_counter %],
+[%      END %]
+    ) [% IF element.returns.name != 'void' %]returns [% element.returns.array_text %][% type_caster.cast( element.returns.name ) %][% END %] { ... }
+[%  ELSE %]
+[%# I spy with my little eye, I spy a constructor %]
+[%  END %]
+
+[% END %]
+}
+EO_Class_Template
 }
 
 1;
@@ -102,17 +126,20 @@ Java::Javap::Generator::Std - uses TT to spit out Perl 6
 =head1 SYNOPSIS
 
     useJava::Javap::Generator; 
-    my $gen = Java::Javap::Generator->get_generator( 'Std', \%tt_args );
+    my $gen = Java::Javap::Generator->get_generator( 'Std' );
     my $output = $gen->generate(
             'com.example.InterfaceName',
-            $tree
+            $tree,
+            $javap_flags,
     );
 
 where C<$tree> is a Java::Javap abstract syntax tree (AST).
 
 =head1 DESCRIPTION
 
-This is a generator which uses TT to make output.
+This is a generator which uses TT to make output.  It's templates are
+strings inside this module.  To change templates, subclass and override
+C<_get_template_for_interface> and C<_get_template_for_class>.
 
 =head1 METHODS
 
@@ -121,47 +148,59 @@ This is a generator which uses TT to make output.
 =item get_generator
 
 Call this as a class method on C<Java::Javap::Generator>.  Pass it
-C<Std> to ask it for an instance of this class.  Also (optionally)
-pass it a hash reference of Template Toolkit constructor arguments.
-These are passed directory to C<Template>'s C<new> method, so see
-its docs for what is allowed.
-
-If you do not supply TT constructor arguments, you will get these by
-default:
-
-    {
-        INCLUDE_PATH => 'templates:.',
-        POST_CHOMP   => 1
-    }
+C<Std> to ask it for an instance of this class.
 
 =item generate
 
 This is the workhorse of this module.  It takes information about your
-java .class file and generates Perl 6 code.  Actually, what it generates
-depends entirely on the TT template you supply.  That could be Perl 5
-or even (horrors) Python or Ruby code.
+java .class file and generates Perl 6 code.
 
-Parameters:
+Parameters (these are named, pass them in a hashref, see below):
 
-    class_file - for documentation, the name of the java .class file
-    ast        - the syntax tree you got from the parser
-    template   - the name of a TT template
+=over 4
 
-Use C<Java::Javap::Grammar> to generate the ast.  The template
-will have to live in the current directory or a subdirectory of it
-called 'templates', unless you pass TT constructor args.
+=item class_file
 
-The template fully controls the output.
+for documentation, the name of the java .class file
+
+=item ast
+
+the syntax tree you got from the parser
+
+=item javap_flags
+
+for documentation, the flags used on the javap command line
+
+=back
+
+Use C<Java::Javap::Grammar> to generate the ast.
+
+Example:
+
+ my $parser = Java::Javap::Grammar->new();
+ my $decomp = `javap com.example.SomeInterface`;
+ my $tree   = $parser->comp_unit( $decomp );
+ my $jenny  = Java::Javap::Generator->get_generator( 'Std' );
+ my $output = $jenny->generate( 
+      {
+          class_file  => $class_file,
+          ast         => $tree,
+      }
+ );
 
 =item new
 
-For use by C<Java::Javap::Generator>.  You could call it directly, passing
-it the TT constructor arguments as described above.  That would bypass
-the factory.
+For use by C<Java::Javap::Generator>.  You could call it directly, that
+would bypass the factory.
 
 =item tt_args_set
 
-Accessor for changing the TT constructor arguments.  You may call this
+By default, the TT objects used internally will have this TT constructor
+parameter:
+
+    { POST_CHOMP   => 1 }
+
+Use this accessor to change the TT constructor arguments.  You may call this
 at any time.  The C<new> method uses this accessor.
 
 Since C<generate> makes a new TT object for each call, any changes you

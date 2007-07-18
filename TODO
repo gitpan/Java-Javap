@@ -1,3 +1,8 @@
+Fix role/class naming so java dots become perl double colons.
+
+x move generate method to named params so we can pass the other
+  command line flags.
+
 x standard type conversions
     int -> Int
     java.lang.String -> Str
@@ -11,9 +16,26 @@ document all modules with POD
 
 allow command line supply of type casts?
 
-actually pass command line flags to emit
+x actually pass command line flags to emit
 
-handle class generation (is it the same as interfaces?)
+x handle class generation (is it the same as interfaces?)
+    essentially like interfaces, but using class definitions constructors
+    are skipped as the only normal purpose of sub method BUILD is to
+    convert positional parameters to named parameters which Perl constructors
+    expect.  Implementing that would require detailed knowledge of the
+    internals of the Java classes, which would defeat most of the purpose
+    of an abstraction layer.
+
+Implement command line options:
+    nest
+    outdir
+    recurse
+
+Make output go to a file in the current directory named for the role
+or class by default (in Std generator).  Tell all generators about
+nest and outdir.
+
+Write generators which dump the ast with Data::Dumper and YAML.
 
 ---
 

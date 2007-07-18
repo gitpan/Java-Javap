@@ -3,24 +3,29 @@ use warnings;
 
 use lib 'lib';
 
-use Test::More tests => 2;
+use Test::More;
 use Java::Javap::Grammar;
 use Java::Javap::Generator;
+
+`javap`;
+plan skip_all => 'javap from Java SDK required' if $!;
+plan tests    => 2;
 
 #--------------------------------------------------------------------
 # Grammar
 #--------------------------------------------------------------------
 
 my $parser = Java::Javap::Grammar->new();
-my $decomp = `javap -classpath testjavas IntTest`;
+my $decomp = `javap -classpath testjavas com.example.NestedIntTest`;
 
 my $tree   = $parser->comp_unit( $decomp );
 
 my $expected_tree = {
-          'compiled_from' => 'IntTest.java',
+          'compiled_from' => 'NestedIntTest.java',
           'parent' => undef,
           'final' => undef,
-          'qualified_name' => 'IntTest',
+          'perl_qualified_name' => 'com::example::NestedIntTest',
+          'java_qualified_name' => 'com.example.NestedIntTest',
           'access' => 'public',
           'contents' => [
                           {
@@ -151,7 +156,13 @@ is_deeply( $tree, $expected_tree, 'interface' );
 
 my $generator = Java::Javap::Generator->get_generator( 'Std' );
 
-my $perl_6 = $generator->generate( 'IntTest', $tree );
+my $perl_6 = $generator->generate(
+    {
+        class_file  => 'IntTest',
+        ast         => $tree,
+        javap_flags => '--classpath testjavas',
+    }
+);
 #warn $perl_6;
 $perl_6    =~ s/^#.*//gm;
 my @perl_6 = split /\n/, $perl_6;
@@ -161,7 +172,8 @@ my @correct_perl_6 = split /\n/, <<'EO_Correct_Perl_6';
 
 
 
-role IntTest {
+
+role com::example::NestedIntTest {
 
     method array_returner(
         Str v1,
