@@ -23,11 +23,29 @@ my $tree   = $parser->comp_unit( $decomp );
 my $expected_tree = {
           'compiled_from' => 'ClassTest.java',
           'parent' => 'java.lang.Object',
-          'final' => undef,
+          'qualifiers' => [],
           'perl_qualified_name' => 'ClassTest',
           'java_qualified_name' => 'ClassTest',
           'access' => 'public',
           'contents' => [
+                          {
+                              'body_element' => 'variable',
+                              'type' => 'java.lang.String',
+                              'access' => 'public',
+                              'name' => 'var1',
+                          },
+                          {
+                              'body_element' => 'variable',
+                              'type' => 'java.lang.String',
+                              'access' => 'protected',
+                              'name' => 'var2',
+                          },
+                          {
+                              'body_element' => 'variable',
+                              'type' => 'java.lang.String',
+                              'access' => '',
+                              'name' => 'var3',
+                          },
                           {
                             'body_element' => 'constructor',
                             'access' => 'public',
@@ -132,6 +150,9 @@ my @correct_perl_6 = split /\n/, <<'EO_Correct_Perl_6';
 
 
 class ClassTest {
+
+
+
 
 
 

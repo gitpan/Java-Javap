@@ -8,7 +8,7 @@ use File::Spec;
 
 `javap`;
 plan skip_all => 'javap from Java SDK required' if $!;
-plan tests    => 4;
+plan tests    => 5;
 
 my $perl       = $^X;
 my $java2perl6 = File::Spec->catfile( 'bin', 'java2perl6' );
@@ -83,5 +83,28 @@ if ( -f $nested_location ) {
 }
 else {
     fail( "$nested_location under alternate dir" );
+}
+
+#--------------------------------------------------------------------
+# Recursive nested output of packaged module under current directory.
+#--------------------------------------------------------------------
+
+`$perl $java2perl6 --jpcmd '-classpath testjavas' --nest --recurse $testclass`;
+my $original_nested_location = File::Spec->catfile(
+        'com', 'example', 'NestedIntTest.pm'
+);
+my $second_nested_location = File::Spec->catfile(
+        'com', 'example', 'Second.pm'
+);
+
+if ( -f $second_nested_location ) {
+    ok( "$second_nested_location under current dir" );
+    unlink $second_nested_location;
+    unlink $original_nested_location;
+    rmdir  File::Spec->catdir( 'com', 'example' );
+    rmdir  'com';
+}
+else {
+    fail( "$second_nested_location under current dir" );
 }
 

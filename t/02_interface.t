@@ -4,12 +4,13 @@ use warnings;
 use lib 'lib';
 
 use Test::More;
+use Java::Javap;
 use Java::Javap::Grammar;
 use Java::Javap::Generator;
 
 `javap`;
 plan skip_all => 'javap from Java SDK required' if $!;
-plan tests    => 2;
+plan tests    => 3;
 
 #--------------------------------------------------------------------
 # Grammar
@@ -23,7 +24,7 @@ my $tree   = $parser->comp_unit( $decomp );
 my $expected_tree = {
           'compiled_from' => 'NestedIntTest.java',
           'parent' => undef,
-          'final' => undef,
+          'qualifiers' => [],
           'perl_qualified_name' => 'com::example::NestedIntTest',
           'java_qualified_name' => 'com.example.NestedIntTest',
           'access' => 'public',
@@ -134,13 +135,29 @@ my $expected_tree = {
                                       ],
                             'name' => 'void_returner',
                             'throws' => []
-                          }
+                          },
+                          {
+                            'attrs' => [
+                                         'abstract'
+                                       ],
+                            'body_element' => 'method',
+                            'returns' => {
+                                           'array_text' => '',
+                                           'array_depth' => 0,
+                                           'name' => 'com.example.Second'
+                                         },
+                            'access' => 'public',
+                            'args' => [],
+                            'name' => 'recurse_for_me',
+                            'throws' => []
+                          },
                         ],
           'class_or_interface' => 'interface',
           'methods' => {
               'object_returner' => 2,
               'array_returner' => 1,
               'void_returner' => 1,
+              'recurse_for_me' => 1,
           },
           constructors => undef,
           'implements' => undef,
@@ -149,6 +166,13 @@ my $expected_tree = {
 is_deeply( $tree, $expected_tree, 'interface' );
 
 #use Data::Dumper; warn Dumper( $tree );
+
+#--------------------------------------------------------------------
+# Finding unique types we need to traverse
+#--------------------------------------------------------------------
+my $unique_types = Java::Javap->get_included_types( $tree );
+
+is_deeply( $unique_types, [ 'com.example.Second' ], 'unique_types' );
 
 #--------------------------------------------------------------------
 # Emission
@@ -192,6 +216,9 @@ role com::example::NestedIntTest {
     method void_returner(
         Int v1,
     )  { ... }
+
+    method recurse_for_me(
+    ) returns com::example::Second { ... }
 
 }
 EO_Correct_Perl_6
