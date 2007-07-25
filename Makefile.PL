@@ -19,3 +19,14 @@ WriteMakefile(
       (ABSTRACT_FROM  => 'lib/Java/Javap.pm', # retrieve abstract from module
        AUTHOR         => 'Philip Crow <phil@apple.com>') : ()),
 );
+
+sub MY::postamble {
+    return unless -d ".svn"; # ignore for non-developers
+return <<'MAKE_FRAG';
+all :: lib/Java/Javap/Grammar.pm
+
+lib/Java/Javap/Grammar.pm: lib/Java/Javap/javap.grammar
+	cd lib/Java/Javap && perl -MParse::RecDescent - javap.grammar Java::Javap::Grammar
+
+MAKE_FRAG
+}

@@ -43,29 +43,31 @@ class_qualifier   : 'final' { 'final' }
 extends_clause    : 'extends' qualified_name { $item{ qualified_name } }
 implements_clause : 'implements' comma_list  { $item{ comma_list } }
 
-body : body_element(s) { $item[1] }
+body : body_element(s?) { $item[1] }
 
 body_element : constant { $item[1] }
              | 'static' '{' '}' ';'  { { body_element => 'static_block' } }
              | method   { $item[1] }
              | variable { $item[1] }
 
-constant : ACCESS 'static' /(final)?/ qualified_name NAME ';' {
+constant : ACCESS 'static' constant_modifier(s?) arg NAME ';' {
     {
         body_element => 'constant',
-        access       => $item[1],
-        final        => ( $item[3] eq 'final' ) ? 'final' : '',
-        type         => $item[4],
-        name         => $item[5],
+        access       => $item{ ACCESS },
+        modifiers    => $item{ 'constant_modifier(s?)' },
+        type         => $item{ arg }[0],
+        name         => $item{ NAME },
     }
 }
-         | 'transient' qualified_name NAME ';' {
+         | 'static' 'transient' arg NAME ';' {
     {
-        body_element => 'transient',
-        type         => $item[2],
-        name         => $item[3],
+        body_element => 'transient_constant',
+        type         => $item{ arg }[0],
+        name         => $item{ NAME },
     }
 }
+
+constant_modifier : 'final' | 'transient' | 'volatile'
 
 method : ACCESS method_qualifier(s?)
          arg NAME '(' arg_list(?) ')'
@@ -105,14 +107,16 @@ method_qualifier : 'abstract'     { 'abstract'     }
 
 throws_clause  : 'throws' comma_list { $item{comma_list} }
 
-variable : ACCESS qualified_name NAME ';' {
+variable : ACCESS var_modifier(s?) arg NAME ';' {
     {
         body_element => 'variable',
-        access       => $item{ACCESS},
-        name         => $item{NAME},
-        type         => $item{qualified_name},
+        access       => $item{ ACCESS },
+        name         => $item{ NAME },
+        type         => $item{ arg }[0],
     }
 }
+
+var_modifier : 'volatile' | 'final' | 'transient'
 
 qualified_name : NAME '.' qualified_name
                  { "$item{NAME}.$item{qualified_name}" }
@@ -157,7 +161,7 @@ array_depth : ARRAY_LEVEL(s?) {
 
 ARRAY_LEVEL : '[]' { 1 }
 
-NAME : /^([\w\d]+)/ { $1 }
+NAME : /^([\w\d\$]+)/ { $1 }
 
 ACCESS : 'public'    { $item[1] }
        | 'protected' { $item[1] }
