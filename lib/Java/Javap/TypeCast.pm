@@ -1,6 +1,12 @@
 package Java::Javap::TypeCast;
 
+# http://perlcabal.org/syn/S02.html#Built-In_Data_Types
+
+# XXX these are all quite vague and liable to change XXX
+#
 my $type_casts = {
+    # http://java.sun.com/docs/books/tutorial/java/nutsandbolts/datatypes.html
+    # these may change to perl6's native types at some point
     int                => 'Int',
     long               => 'Int',
     short              => 'Int',
@@ -9,9 +15,39 @@ my $type_casts = {
     float              => 'Num',
     double             => 'Num',
     boolean            => 'Bool',
-    'java.lang.String' => 'Str',
-    'java.net.URI'     => 'Str',
-    'java.net.URL'     => 'Str',
+
+    'java.lang.Object'      => 'Mu',
+    'java.lang.Class'       => 'Any',
+    'java.lang.String'      => 'Str',
+    'java.lang.Number'      => 'Num',
+    'java.lang.CharSequence'=> 'Str',
+    'java.lang.Exception'   => 'Mu', # XXX Failure?
+
+    'java.math.BigInteger'  => 'Int',
+    'java.math.BigNumber'   => 'Num',
+    'java.math.BigDecimal'  => 'Num', # XXX should be Rat when available
+
+    # java.util interfaces:
+    'java.util.Collection'  => 'Bag',
+    'java.util.Enumeration' => 'Iterable',
+    'java.util.Iterator'    => 'Any',
+    'java.util.Map'         => 'Hash', # KeyHash?
+    'java.util.Set'         => 'Set',
+    # java.util classes:
+    'java.util.Hashtable'   => 'Hash', # KeyHash?
+    'java.util.Properties'  => 'Hash', # persistent Hashtable
+    'java.util.Calendar'    => 'DateTime',
+    'java.util.Date'        => 'DateTime',
+    'java.util.Time'        => 'DateTime',
+    'java.util.TimeStamp'   => 'DateTime',
+
+    'java.net.URI'          => 'Str',
+    'java.net.URL'          => 'Str',
+
+    'java.io.InputStream'   => 'IO',
+
+    'java.nio.ByteBuffer'   => 'Buf',
+    'java.nio.CharBuffer'   => 'Str',
 };
 
 sub set_type_casts {
@@ -31,12 +67,21 @@ sub new {
 sub cast {
     my $self      = shift;
     my $java_type = shift;
-
+  
     return $type_casts->{ $java_type } if $type_casts->{ $java_type };
 
+    # special cases
+    return 'Any' if $java_type =~ m/^sun\.reflect\./;
+    return 'Any' if $java_type =~ m/^sun\.lang\.annotation/;
+    return 'Any' if $java_type =~ m/^sun\.lang\.reflect/;
+    return 'Any' if $java_type =~ m/\$/;
+
+    #print "WARNING: No mapping for '$java_type' default to class 'Any'\n";
     $java_type    =~ s/\./::/g;
+    $java_type    =~ s/\$/_PRIVATE_/g; # handle '$' in type names
 
     return $java_type;
+    #return 'Any';
 }
 
 =head1 NAME
@@ -57,7 +102,7 @@ To adjust the type cast table:
 
     my $current_types = $type_caster->get_types();
 
-    $current_types->{ com.example.ShouldBeInt } = 'Int';
+    $current_types->{ 'com.example.ShouldBeInt' } = 'Int';
 
 To replace the whole table:
 

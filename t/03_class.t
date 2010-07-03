@@ -3,20 +3,22 @@ use warnings;
 
 use lib 'lib';
 
-use Test::More;
-use Java::Javap::Grammar;
+use Test::Most;
+use Java::Javap;
 use Java::Javap::Generator;
+use Java::Javap::Grammar;
 
-`javap`;
-plan skip_all => 'javap from Java SDK required' if $!;
-plan tests    => 2;
+plan skip_all => "javap from Java SDK required: $!"
+	unless Java::Javap->javap_test();
+
+plan tests    => 3;
 
 #--------------------------------------------------------------------
 # Grammar
 #--------------------------------------------------------------------
 
 my $parser = Java::Javap::Grammar->new();
-my $decomp = `javap -classpath testjavas ClassTest`;
+my $decomp = Java::Javap->javap('ClassTest', {-classpath=>'testjavas'});
 
 my $tree   = $parser->comp_unit( $decomp );
 
@@ -153,29 +155,73 @@ my $perl_6    = $generator->generate(
 );
 #warn $perl_6;
 $perl_6    =~ s/^#.*//gm;
+$perl_6    =~ s/^\s+//;
 my @perl_6 = split /\n/, $perl_6;
-
+#diag($perl_6);
 my @correct_perl_6 = split /\n/, <<'EO_Correct_Perl_6';
-
-
-
+use v6;
 
 
 class ClassTest {
-
-
-
-
-
+    multi method getGreet(
+        Int $v1, 
+     --> Str    #  Str
+    ) { ... }
 
     multi method getGreet(
-    ) returns Str { ... }
+     --> Str    #  Str
+    ) { ... }
 
-    multi method getGreet(
-        Int v1,
-    ) returns Str { ... }
-
-}
+};
 EO_Correct_Perl_6
 
-is_deeply( \@perl_6, \@correct_perl_6, 'emission' );
+eq_or_diff( \@perl_6, \@correct_perl_6, 'emission' );
+
+#--------------------------------------------------------------------
+# Emission - duplicate method removal
+#--------------------------------------------------------------------
+{
+  my $parser = Java::Javap::Grammar->new();
+  my $decomp = Java::Javap->javap('dupMethodTest', {-classpath=>'testjavas'});
+
+  my $tree   = $parser->comp_unit( $decomp );
+
+  my $generator = Java::Javap::Generator->get_generator( 'Std' );
+  my $perl_6    = $generator->generate(
+      {
+          class_file  => 'dupMethodTest',
+          ast         => $tree,
+          javap_flags =>'--classpath testjavas',
+          debug => 1,
+      }
+  );
+  #warn $perl_6;
+  $perl_6    =~ s/^#.*//gm;
+  $perl_6    =~ s/^\s+//;
+  my @perl_6 = split /\n/, $perl_6;
+#  diag("got: $perl_6");
+  my @correct_perl_6 = split /\n/, <<'EO_Correct_Perl_6_a';
+use v6;
+
+
+class dupMethodTest {
+    multi method dupMethod(
+        Str @v1, 
+     --> Str    #  Str
+    ) { ... }
+
+    multi method dupMethod(
+        Int $v1, 
+     --> Str    #  Str
+    ) { ... }
+
+    method nonDupedMethod(
+        Int $v1, 
+     --> Int    #  Int
+    ) { ... }
+
+};
+EO_Correct_Perl_6_a
+
+  eq_or_diff( \@perl_6, \@correct_perl_6, 'emission - duplicate method signatures removed' );
+}

@@ -1,44 +1,22 @@
-Fix role/class naming so java dots become perl double colons.
+A quick rough list in no particular order:
 
-x move generate method to named params so we can pass the other
-  command line flags.
+Add way to specify extra/overriding type mappings externally.
 
-x standard type conversions
-    int -> Int
-    java.lang.String -> Str
-    etc.
+Improve test coverage.
 
-x multis
+Handle constants in class/interface definitions. For example:
+    public static final int CONCUR_READ_ONLY;
 
-x parameter types for method declarations
+Find a way to extract the actual constant value from Java and embed
+into the generated class/role?
 
-document all modules with POD
+Someone with reasonable knowledge of perl6 and java should sanity check the
+translation and document the issues/tradeoffs.
 
-allow command line supply of type casts?
+Write some tests that run perl6 code that consumes a generated role.
 
-x actually pass command line flags to emit
-
-x handle class generation (is it the same as interfaces?)
-    essentially like interfaces, but using class definitions constructors
-    are skipped as the only normal purpose of sub method BUILD is to
-    convert positional parameters to named parameters which Perl constructors
-    expect.  Implementing that would require detailed knowledge of the
-    internals of the Java classes, which would defeat most of the purpose
-    of an abstraction layer.
-
-Implement command line options:
-    nest
-    outdir
-    recurse
-
-Make output go to a file in the current directory named for the role
-or class by default (in Std generator).  Tell all generators about
-nest and outdir.
-
-Write generators which dump the ast with Data::Dumper and YAML.
-
----
-
-handle thrown errors
-
-handle class constants (requires loading the java class or interface)
+Move multi-line strings used for comparison tests out from the test script
+into separate text files. Then if a test fails write the new output to a
+different file (same name, extra extension). That way when the code
+generation is changed the tests can be sync'd just by renaming the new file
+over the old one. (This approach has worked well for the NYTProf tests.)

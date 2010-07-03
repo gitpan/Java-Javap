@@ -1,57 +1,105 @@
 package Java::Javap;
-use strict; use warnings;
 
-our $VERSION = '0.04';
+use strict;
+use warnings;
+use Carp;
+
+our $VERSION = '0.06';
+our $JAVAP_EXECUTABLE = 'javap';
 
 use Java::Javap::TypeCast;
-
-my $caster   = Java::Javap::TypeCast->new();
 
 sub get_included_types {
     shift; # invoked through this class, discard our name
     my $tree     = shift;
+    my $caster   = shift;
+   
     my %answers;
 
     # first, get parent type
     my $parent   = $tree->{ parent };
-    $answers{ $parent }++ unless ( _skip_it( $parent ) );
+    $answers{ $parent }++ unless ( _skip_it( $parent, $caster ) );
 
     # now get types from the children
     my $contents = $tree->{ contents };
 
     ELEMENT:
     foreach my $element ( @{ $contents } ) {
-        next ELEMENT unless $element->{ body_element } eq 'method';
+        if ($element->{ body_element } ne 'method') {
+            next ELEMENT;
+        }
 
-        # check return value
-        my $return_type = $element->{ returns }{ name };
+        foreach my $item (
+            $element->{ returns },
+            @{ $element->{ args } }
+        ) {
+            my $type_name = $item->{ name };
+            next if _skip_it( $type_name, $caster );
 
-        $answers{ $return_type }++ unless ( _skip_it( $return_type ) );
-
-        # check args
-        foreach my $arg ( @{ $element->{ args } } ) {
-            my $arg_type = $element->{ returns }{ name };
-            $answers{ $return_type }++ unless ( _skip_it( $arg_type ) );
+            $answers{ $type_name }++
+                unless $type_name eq $tree->{java_qualified_name};
+            #warn "Noted $element->{name} type $type_name\n";
         }
     }
 
     return [ keys %answers ];
 }
 
+sub invoke_javap {
+	my ($self, $classes, $options) = @_;
+
+	if (! $classes) {
+		croak "No classes to be parsed";
+	}
+
+	if (! ref $classes) {
+		$classes = [ $classes ];
+	}
+
+	$options ||= {};
+
+	# Open the real javap executable and read output from it
+	open(my $javap_fh, '-|', $JAVAP_EXECUTABLE, %$options, @$classes)
+		or croak "'$JAVAP_EXECUTABLE @{[ %$options ]} @$classes' failed: $!";
+
+	my $javap_output = q{};
+
+	while (<$javap_fh>) {
+		$javap_output .= $_;
+	}
+
+	# When dealing with a pipe, we also want to get errors from close
+	close $javap_fh
+		or croak "'$JAVAP_EXECUTABLE @{[ %$options ]} @$classes' failed: $!";
+
+	return $javap_output;
+}
+
+*javap = *invoke_javap;
+
+# Shortcut for the test suite
+sub javap_test {
+	my ($self) = @_;
+	my $output;
+	eval { $output = $self->invoke_javap(['java.lang.String']) };
+	return $output ? 1 : 0;
+}
+
+# Returns true if type casts to a builtin perl6 type
 sub _skip_it {
-    my $type    = shift;
+    my $type_name    = shift;
+    my $caster  = shift;
+    
+    return 1 if not defined $type_name;
+    return 1 if $type_name eq 'void';
 
-    return 1 unless defined $type;
-
-    my $cast    = $caster->cast( $type );
-    $cast       =~ s/::/./g;
+    my $cast = $caster->cast( $type_name );
+    $cast    =~ s/::/./g;
 
     my $skip_it = 0;
 
-    $skip_it++ if ( $type ne $cast ) or ( $type eq 'void' );
-
-#    $skip_it++ if $type =~ /^java\.util/;
-#    $skip_it++ if $type =~ /^java\.math/;
+    $skip_it++ if ( $type_name ne $cast );
+    #warn "Skipping $type_name ($cast)\n" if $skip_it;
 
     return $skip_it;
 }
@@ -87,16 +135,57 @@ an a C<Java::Javap::Grammar> object.
 Returns: an array reference of the types in arguments to methods, or
 return values (thrown types are not reported).
 
+=head2 invoke_javap
+
+=head2 javap
+
+Invokes the C<javap> process and return the output.
+Throws an exception if something goes wrong, like C<javap> is
+not found.
+
+=head3 Parameters
+
+=over
+
+=item \@classes
+
+List of classes to be decompiled. It can also be supplied as a string,
+if a single class should be decompiled.
+
+=item \%options
+
+Options to be passed to the C<javap> process.
+
+=back
+
+=head3 Example
+
+    my @classes = ('java.lang.String');
+    my %options = ();
+    my $output = Java::Javap->javap(\@classes, \%options);
+
+	# or ...
+
+    my $output = Java::Javap->javap('java.lang.String');
+
 =head1 SEE ALSO
 
-C<java2perl6>
-C<Java::Javap::Generator>
-C<Java::Javap::Generator::Std>
-C<javap.grammar>
+=over
 
-=head1 AUTHOR
+=item C<java2perl6>
+
+=item C<Java::Javap::Generator>
+
+=item C<Java::Javap::Generator::Std>
+
+=item C<javap.grammar>
+
+=back
+
+=head1 AUTHORS
 
 Philip Crow, E<lt>crow.phil@gmail.comE<gt>
+Cosimo Streppone, E<lt>cosimo@cpan.orgE<gt>
 
 =head1 COPYRIGHT AND LICENSE
 

@@ -1,37 +1,13 @@
-Java-Javap version 0.03
-=======================
 
-Java::Javap is meant to be a Perl 6 equivalent to javah that ships with
-the Java development kit.  It will (when it is finished) translate
-compiled Java APIs to corresponding Perl 6 APIs.
 
-INSTALLATION
+This archive contains the distribution Java-Javap,
+version 0.05:
 
-To install this module type the following:
+  Translate Java Class and Interface Definitions to Perl 6 Roles
 
-   perl Makefile.PL
-   make
-   make test
-   make install
+This software is copyright (c) 2010 by Tim Bunce <Tim.Bunce@pobox.com>.
 
-USAGE
-
-See the POD in java2perl6 (in the bin directory of the distribution) for
-information on how to use this module.
-
-DEPENDENCIES
-
-This module requires these other modules and libraries:
-
-    a Java development kit with javap in your path
-    Parse::RecDescent
-
-COPYRIGHT AND LICENCE
-
-Copyright (C) 2007 by Philip Crow
-
-This library is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself, either Perl version 5.8.6 or,
-at your option, any later version of Perl 5 you may have available.
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
 
 

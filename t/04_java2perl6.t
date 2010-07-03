@@ -5,9 +5,11 @@ use lib 'lib';
 
 use Test::More;
 use File::Spec;
+use Java::Javap;
 
-`javap`;
-plan skip_all => 'javap from Java SDK required' if $!;
+plan skip_all => "javap from Java SDK required: $!"
+	unless Java::Javap->javap_test();
+
 plan tests    => 5;
 
 my $perl       = $^X;
@@ -18,30 +20,30 @@ my $testclass  = 'IntTest';
 # Output to current directory.
 #--------------------------------------------------------------------
 
-`$perl $java2perl6 --jpcmd '-classpath testjavas' $testclass`;
+`$perl $java2perl6 --quiet --jpcmd '-classpath testjavas' $testclass`;
 
-if ( -f "$testclass.pm" ) {
-    ok( "$testclass.pm in current dir" );
-    unlink "$testclass.pm";
+if ( -f "$testclass.pm6" ) {
+    ok( "$testclass.pm6 in current dir" );
+    unlink "$testclass.pm6";
 }
 else {
-    fail( "$testclass.pm in current dir" );
+    fail( "$testclass.pm6 in current dir" );
 }
 
 #--------------------------------------------------------------------
 # Output to another directory.
 #--------------------------------------------------------------------
 
-`$perl $java2perl6 --jpcmd '-classpath testjavas' --outdir newdir $testclass`;
-my $output_file = File::Spec->catfile( 'newdir', "$testclass.pm" );
+`$perl $java2perl6 --quiet --jpcmd '-classpath testjavas' --outdir newdir $testclass`;
+my $output_file = File::Spec->catfile( 'newdir', "$testclass.pm6" );
 
 if ( -f $output_file ) {
-    ok( "$testclass.pm in new dir" );
+    ok( "$testclass.pm6 in new dir" );
     unlink $output_file;
     rmdir 'newdir';
 }
 else {
-    fail( "$testclass.pm in new dir" );
+    fail( "$testclass.pm6 in new dir" );
 }
 
 #--------------------------------------------------------------------
@@ -50,9 +52,9 @@ else {
 
 $testclass = 'com.example.NestedIntTest';
 
-`$perl $java2perl6 --jpcmd '-classpath testjavas' --nest $testclass`;
+`$perl $java2perl6 --quiet --jpcmd '-classpath testjavas' --nest $testclass`;
 my $nested_location = File::Spec->catfile(
-        'com', 'example', 'NestedIntTest.pm'
+        'com', 'example', 'NestedIntTest.pm6'
 );
 
 if ( -f $nested_location ) {
@@ -69,9 +71,9 @@ else {
 # Nested output of packaged module under another directory.
 #--------------------------------------------------------------------
 
-`$perl $java2perl6 --jpcmd '-classpath testjavas' --nest --outdir newdir $testclass`;
+`$perl $java2perl6 --quiet --jpcmd '-classpath testjavas' --nest --outdir newdir $testclass`;
 $nested_location = File::Spec->catfile(
-        'newdir', 'com', 'example', 'NestedIntTest.pm'
+        'newdir', 'com', 'example', 'NestedIntTest.pm6'
 );
 
 if ( -f $nested_location ) {
@@ -89,12 +91,12 @@ else {
 # Recursive nested output of packaged module under current directory.
 #--------------------------------------------------------------------
 
-`$perl $java2perl6 --jpcmd '-classpath testjavas' --nest --recurse $testclass`;
+`$perl $java2perl6 --quiet --jpcmd '-classpath testjavas' --nest --recurse $testclass`;
 my $original_nested_location = File::Spec->catfile(
-        'com', 'example', 'NestedIntTest.pm'
+        'com', 'example', 'NestedIntTest.pm6'
 );
 my $second_nested_location = File::Spec->catfile(
-        'com', 'example', 'Second.pm'
+        'com', 'example', 'Second.pm6'
 );
 
 if ( -f $second_nested_location ) {

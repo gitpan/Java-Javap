@@ -4,19 +4,19 @@ use warnings;
 
 use Getopt::Long;
 use File::Spec;
+use Data::Dumper;
 
 use Java::Javap;
 use Java::Javap::Grammar;
 use Java::Javap::Generator;
 
 my $genwith   = 'Std';
-my $genoptstr = '';
 my $jpcmd     = '';
 my $nest;
 my $outdir    = '.';
 my $recurse;
-my $quiet     = 0;
-my $verbose   = 0;
+
+my %java_class_info;
 
 #use Parse::RecDescent; $::RD_TRACE = 1;
 
@@ -24,104 +24,202 @@ my $verbose   = 0;
 #   astas - no, make this a Genterator,
 #           but do write the backends for YAML and Perl
 
+# XXX nest and recurse should default on
+
 GetOptions(
     'jpcmd|j=s'   => \$jpcmd,
     'genwith|g=s' => \$genwith,
-    'genopts|p=s' => \$genoptstr,
-    'nest|n'      => \$nest,
+    'genopts|p=s' => \my $opt_genopts,
+    'nest|n!'     => \$nest,
     'outdir|d=s'  => \$outdir,
-    'recurse|r'   => \$recurse,
-    'quiet|q'     => \$quiet,
-    'verbose|v'   => \$verbose,
-    'help|h'      => \&help,
-);
+    'recurse|r!'  => \$recurse,
+    'check|c!'    => \my $opt_check,
+    'quiet|q!'    => \my $quiet,
+    'trace|t=i'   => \(my $opt_trace = 1),
+    'help|h!'     => \&help,
+) or exit 1;
 
-my @genopts = split /\s+/, $genoptstr;
+my @classes = @ARGV or die "usage: $0 [options] class [ class ... ]\nUse $0 --help for help\n";
 
-my @classes = @ARGV or die "usage: $0 [options] class [ class ... ]\n";
-
-my $parser = Java::Javap::Grammar->new();
-my $jenny  = Java::Javap::Generator->get_generator( $genwith, @genopts );
-
-my %seen             = map { $_ => 1 } @classes;
-my %done;
-my $we_did_something = 1;
-
-while ( $we_did_something ) {
-    $we_did_something = 0;
-
-    CLASS:
-    foreach my $class ( sort keys %seen ) {
-
-        next CLASS if $done{ $class };
-
-        $we_did_something++;
-
-        my $included_classes = eval { process_one_file( $class ) } || [];
-        warn $@ if $@;
-
-        $done{ $class } = 1;
-
-        if ($recurse) {
-            foreach my $included_class ( @{ $included_classes } ) {
-                $seen{ $included_class } ||= 1;
-            }
-        }
-    }
+# --quiet overrides trace level option
+if ($quiet) {
+    $opt_trace = 0;
 }
 
+$::RD_WARN  = 1;
+$::RD_TRACE = 1 if $opt_trace >= 9;
 
-sub process_one_file {
-    my $class = shift;
+my $parser = Java::Javap::Grammar->new();
+my $caster = Java::Javap::TypeCast->new();
+my $jenny  = Java::Javap::Generator->get_generator(
+    $genwith,
+    trace_level => $opt_trace,
+    split(/\s+/, $opt_genopts||''),
+);
+
+my %check_status;
+
+my %top_types;
+foreach my $class ( @classes  ) {
+    eval {
+        my $types = load_java_class_info( $class, $recurse ) || [];
+        $top_types{$_}++ for @$types;
+    };
+}
+
+for my $class (sort keys %java_class_info) {
+    my $info = $java_class_info{$class};
+    # ignore clases just vivified for referred_to_by_classes
+    next unless $info->{tree};
+
+    # include the decompiled java for reference
+    my @epilogue = ("=begin pod\n");
+    if (my $refs = $info->{referred_to_by_classes}) {
+        push @epilogue, "=head1 Referenced By\n";
+        push @epilogue, "  $_" for sort @$refs;
+        push @epilogue, "\n(Among the set of classes processed at the same time.)\n";
+    }
+    if (my @decomp = split /\n/, $info->{decomp}) {
+        push @epilogue, "=head1 Java\n";
+        push @epilogue, "  $_" for @decomp;
+        push @epilogue, "\n";
+    }
+    push @epilogue, "=end pod\n";
+
+    my $file_name = generate_output_file( {
+        class_file  => $class,
+        ast         => $info->{tree},
+        javap_flags => $jpcmd,
+        epilogue    => join("\n", '', @epilogue),
+    });
+    $info->{output_filename} = $file_name;
+    warn "$info->{kind} $class: $file_name\n" if $opt_trace && $file_name;
+}
+
+for my $class (sort keys %java_class_info) {
+    next unless $opt_check;
+
+    my $info = $java_class_info{$class};
+    my $file_name = $info->{output_filename}
+        or next;
+
+    warn "$info->{kind} $class: checking $file_name\n";
+    if ($opt_trace) {
+        warn "\t uses @{ $info->{refers_to_classes} }\n"
+            if @{ $info->{refers_to_classes} };
+        warn "\t used by @{ $info->{referred_to_by_classes} }\n"
+            if @{ $info->{referred_to_by_classes} || [] };
+    }
+
+    (my $pirfile = $file_name) =~ s/\.pm6$/.pir/;
+    # we're effectively doing perl6 -c here but we don't use -c
+    # because it's noisy and we know we're only compiling modules
+    my @perl6cmd = ("perl6", "--target=PIR", "--output=$pirfile", $file_name);
+    local $ENV{PERL6LIB} = join(":",grep { $_ } $outdir,$ENV{PERL6LIB});
+    warn "\t @perl6cmd\n" if $opt_trace;
+    $check_status{$file_name} = (system(@perl6cmd) == 0);
+}
+
+if (%check_status) {
+    my $passed = 0;
+    for my $file_name (sort keys %check_status) {
+        my $ok = $check_status{$file_name};
+        printf "%6s: %s\n", ($ok ? "ok" : "FAILED"), $file_name;
+        ++$passed if $ok;
+    }
+    printf "%d ok, %d failed.\n", $passed, keys(%check_status)-$passed;
+}
+
+if ($opt_trace >= 2) {
+    print "Types used by specified classes:\n";
+    printf "%s\n", $_ for sort keys %top_types;
+}
+
+exit 0;
+
+
+sub load_java_class_info {
+    my ($class, $recurse) = @_;
+    my $pad = $recurse ? (". " x ($recurse-1)) : "";
+
+    return undef if $java_class_info{$class}->{decomp};
+
+    warn "$pad$class: loading\n" if $opt_trace;
 
     my $cmd = "javap $jpcmd $class";
-    warn "$cmd\n" if $verbose;
-    my $decomp = `javap $jpcmd $class`;
+    warn "$cmd\n" if $opt_trace >= 3;
+    my $decomp = `$cmd`; # XXX check exit status
+    warn $decomp if $opt_trace >= 3;
     my $tree   = $parser->comp_unit( $decomp )
         or die "Error parsing output of '$cmd'\n";
 
-    my $output = $jenny->generate(
-        {
-            class_file  => $class,
-            ast         => $tree,
-            javap_flags => $jpcmd,
-        }
-    );
+    # tell them which types are used by this class
+    my $referenced_classes = Java::Javap->get_included_types( $tree, $caster );
 
-    if ( $outdir eq 'STDOUT' ) {
-        print $output;
+    $java_class_info{$class} = {
+        %{ $java_class_info{$class} || {} },
+        decomp => $decomp,
+        tree => $tree,
+        refers_to_classes => $referenced_classes,
+        kind => $tree->{class_or_interface},
+    };
+
+    push @{$java_class_info{$_}->{referred_to_by_classes}}, $class
+        for @$referenced_classes;
+
+    if ($recurse) {
+        for my $ref_class (sort @$referenced_classes) {
+            load_java_class_info( $ref_class, $recurse+1 );
+        }
     }
+
+    return $referenced_classes;
+}
+
+
+
+sub generate_output_file {
+    my $params      = shift;
+    my $epilogue = delete $params->{epilogue};
+
+    my $output = $jenny->generate( $params );
+        
+    $output .= $epilogue if $epilogue;
+
+    my $file_name;
+    if ( $outdir eq 'STDOUT' ) {
+        print $output; 
+    }   
     else { # put it in a directory
-
-        my $module_dir = $outdir;
-        my @subdirs    = split /\./, $class;
-        my $class_name = pop @subdirs;
-
-        mkdir $module_dir or -d $module_dir
-            or die "Can't mkdir $module_dir: $!\n";
-
-        my $file;
-        if ( $nest ) {
-            foreach my $subdir ( @subdirs ) {
-                $module_dir = File::Spec->catdir( $module_dir, $subdir );
-                mkdir $module_dir or -d $module_dir
-                    or die "Can't mkdir $module_dir: $!\n";
-            }
-        }
-
-        my $file_name = File::Spec->catfile( $module_dir, "$class_name.pm" );
-
+        my $class = $params->{class_file};
+        $file_name = output_filename_for_class($class, 1);
         open my $API_MODULE, '>', $file_name
             or die "Couldn't write to $file_name: $!\n";
-
         print $API_MODULE $output;
-
-        close $API_MODULE;
-        warn "$class: $file_name\n" unless $quiet;
+        close $API_MODULE or die "Error writing $file_name: $!\n";
     }
+    
+    return $file_name;
+}       
 
-    # tell them which types we saw
-    return Java::Javap->get_included_types( $tree );
+
+sub output_filename_for_class {
+    my ($class, $mkdir) = @_;
+
+    my @subdirs    = split /\./, $class;
+    my $class_name = pop @subdirs;
+
+    my $module_dir = $outdir;
+    mkdir $module_dir or -d $module_dir
+        or die "Can't mkdir $module_dir: $!\n";
+    if ( $nest ) {
+        foreach my $subdir ( @subdirs ) {
+            $module_dir = File::Spec->catdir( $module_dir, $subdir );
+            mkdir $module_dir or -d $module_dir
+                or die "Can't mkdir $module_dir: $!\n";
+        }
+    }
+    return File::Spec->catfile( $module_dir, "$class_name.pm6" );
 }
 
 
@@ -138,11 +236,17 @@ where options are:
     --genopts or -p   strings to pass to your -g constructor
     --nest or -n      flag indicates output should go in nested directories
     --outdir or -d    top level directory for output
+    --quiet or -q     silences any output. Overrides --trace
+    --trace or -t     defines the trace level (integer value), where:
+                        0 means silence, no trace
+                        1 is minimum trace messages (the default)
+                        2..9 for more detail
     --help or -h      this message
 EO_Help
     exit;
 }
 
+__END__
 
 =head1 NAME
 
@@ -152,18 +256,25 @@ java2perl6 - a Java to Perl 6 API translator
 
  java2perl6 [options] class_file
 
-where options are:
+where the most frequently used options are:
 
+ --nest or -n      place output files in nested directories
+ --outdir or -d    top level directory for output
+ --check           check the generated code compiles using perl6
+
+other options
+
+ --help or -h      this message
  --jpcmd or -j     a string of command line flags for javap, example:
                    -j '-classpath /some/path'
  --genwith or -g   the name of a Java::Javap::Generator:: module
                    which will make the output, defaults to Std
  --genopts or -p   strings to pass to your -g constructor
- --nest or -n      flag indicates output should go in
-                   nested directories
- --outdir or -d    top level directory for output
- --verbose or -v   sends chatter to the screen
- --help or -h      this message
+ --quiet or -q     silences any output. Overrides --trace
+ --trace or -t     defines the trace level (integer value), where:
+                   0 means silence, no trace,
+                   1 is minimum trace messages,
+                   >= 9 for full trace
 
 =head1 DESCRIPTION
 
@@ -244,6 +355,11 @@ an alternate top level directory in which to place output.  It may
 be relative to the current directory or absolute.  Remember that the
 invoking user will need write permission on the directory.
 
+=item --check or -c
+
+Check the validity of the generated Perl 6 code by running it through
+the C<perl6> binary.  Note C<perl6> must be in the PATH.
+
 =item --nest or -n
 
 By default all output is generated at the top level of the C<--outdir>.
@@ -252,10 +368,17 @@ of the Java package.  Thus, since com.example.Module will be called
 com::example::Module, you probably want to use this flag so the output
 will go into the com/example subdirectory of the output directory.
 
-=item --verbose or -v
+=item --quiet or -q
 
-Turn this on to get chatter about what the script is doing.  Currently it
-is a boolean flag.
+Turn this on to silence any output about what the script is doing. Currently it
+is a boolean flag and overrides any trace level specified. See --trace
+option.
+
+=item --trace or -t
+
+Integer value. Assign zero to it (--trace=0) to silence all messages from
+the script. 1 is the minimum trace level. An integer >= 9 will emit full
+trace messages.
 
 =back
 
@@ -272,3 +395,4 @@ it under the same terms as Perl itself, either Perl version 5.8.6 or,
 at your option, any later version of Perl 5 you may have available.
 
 =cut
+vim: ts=8:sw=4:et
